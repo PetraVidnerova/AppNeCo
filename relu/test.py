@@ -14,12 +14,14 @@ class ReLU(nn.ReLU):
 
     counter_all = 0
     counter_negative = 0
+
+    @classmethod
+    def reset_counter(cls):
+        cls.counter_all = 0
+        cls.counter_negative = 0
     
     def forward(self, input):
-        ReLU.counter_all += 1
-
-        size = reduce(mul,list(input.shape))
-        ReLU.counter_all += size
+        ReLU.counter_all += torch.numel(input)
         ReLU.counter_negative += torch.sum(torch.lt(input, 0)).item()
         return super().forward(input)
 
@@ -27,7 +29,10 @@ net = torchvision.models.AlexNet()
 
 print(net)
 
-print(net.features)
+net.classifier[4] = nn.Linear(4096,1024)
+net.classifier[6] = nn.Linear(1024,10)
+
+print(net)
 
 for i, module in enumerate(net.features):
     if isinstance(module, nn.ReLU):
@@ -59,7 +64,7 @@ load_model = True
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(net.parameters(), lr= learning_rate) 
 
-for epoch in range(1):
+for epoch in range(10):
     loss_ep = 0
 
     with tqdm(total=len(train_dl)) as t:
@@ -76,22 +81,22 @@ for epoch in range(1):
             t.update()
     print(f"Loss in epoch {epoch} :::: {loss_ep/len(train_dl)}")
 
-    # with torch.no_grad():
-    #     num_correct = 0
-    #     num_samples = 0
-    #     for batch_idx, (data,targets) in enumerate(val_dl):
-    #         data = data.to(device=device)
-    #         targets = targets.to(device=device)
-    #         ## Forward Pass
-    #         scores = net(data)
-    #         _, predictions = scores.max(1)
-    #         num_correct += (predictions == targets).sum()
-    #         num_samples += predictions.size(0)
-    #     print(
-    #         f"Got {num_correct} / {num_samples} with accuracy {float(num_correct) / float(num_samples) * 100:.2f}"
-    #     )
-
-print("all calls", ReLU.counter_all)
-print("negatives", ReLU.counter_negative)
-
-print(f"{(ReLU.counter_negative/ReLU.counter_all)*100:.2f}%")
+    with torch.no_grad():
+        num_correct = 0
+        num_samples = 0
+        for batch_idx, (data,targets) in enumerate(train_dl):
+            data = data.to(device=device)
+            targets = targets.to(device=device)
+            ## Forward Pass
+            scores = net(data)
+            _, predictions = scores.max(1)
+            num_correct += (predictions == targets).sum()
+            num_samples += predictions.size(0)
+        print(
+            f"Got {num_correct} / {num_samples} with accuracy {float(num_correct) / float(num_samples) * 100:.2f}"
+        )
+        
+        print("All ReLU inputs:", ReLU.counter_all)
+        print("Negative ReLU inputs:", ReLU.counter_negative)
+        print(f"{(ReLU.counter_negative/ReLU.counter_all)*100:.2f}%")
+        ReLU.reset_counter()

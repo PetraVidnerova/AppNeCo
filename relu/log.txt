@@ -25,20 +25,32 @@ AlexNet(
     (6): Linear(in_features=4096, out_features=1000, bias=True)
   )
 )
-Sequential(
-  (0): Conv2d(3, 64, kernel_size=(11, 11), stride=(4, 4), padding=(2, 2))
-  (1): ReLU(inplace=True)
-  (2): MaxPool2d(kernel_size=3, stride=2, padding=0, dilation=1, ceil_mode=False)
-  (3): Conv2d(64, 192, kernel_size=(5, 5), stride=(1, 1), padding=(2, 2))
-  (4): ReLU(inplace=True)
-  (5): MaxPool2d(kernel_size=3, stride=2, padding=0, dilation=1, ceil_mode=False)
-  (6): Conv2d(192, 384, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
-  (7): ReLU(inplace=True)
-  (8): Conv2d(384, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
-  (9): ReLU(inplace=True)
-  (10): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
-  (11): ReLU(inplace=True)
-  (12): MaxPool2d(kernel_size=3, stride=2, padding=0, dilation=1, ceil_mode=False)
+AlexNet(
+  (features): Sequential(
+    (0): Conv2d(3, 64, kernel_size=(11, 11), stride=(4, 4), padding=(2, 2))
+    (1): ReLU(inplace=True)
+    (2): MaxPool2d(kernel_size=3, stride=2, padding=0, dilation=1, ceil_mode=False)
+    (3): Conv2d(64, 192, kernel_size=(5, 5), stride=(1, 1), padding=(2, 2))
+    (4): ReLU(inplace=True)
+    (5): MaxPool2d(kernel_size=3, stride=2, padding=0, dilation=1, ceil_mode=False)
+    (6): Conv2d(192, 384, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (7): ReLU(inplace=True)
+    (8): Conv2d(384, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (9): ReLU(inplace=True)
+    (10): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+    (11): ReLU(inplace=True)
+    (12): MaxPool2d(kernel_size=3, stride=2, padding=0, dilation=1, ceil_mode=False)
+  )
+  (avgpool): AdaptiveAvgPool2d(output_size=(6, 6))
+  (classifier): Sequential(
+    (0): Dropout(p=0.5, inplace=False)
+    (1): Linear(in_features=9216, out_features=4096, bias=True)
+    (2): ReLU(inplace=True)
+    (3): Dropout(p=0.5, inplace=False)
+    (4): Linear(in_features=4096, out_features=1024, bias=True)
+    (5): ReLU(inplace=True)
+    (6): Linear(in_features=1024, out_features=10, bias=True)
+  )
 )
 AlexNet(
   (features): Sequential(
@@ -62,13 +74,23 @@ AlexNet(
     (1): Linear(in_features=9216, out_features=4096, bias=True)
     (2): ReLU(inplace=True)
     (3): Dropout(p=0.5, inplace=False)
-    (4): Linear(in_features=4096, out_features=4096, bias=True)
+    (4): Linear(in_features=4096, out_features=1024, bias=True)
     (5): ReLU(inplace=True)
-    (6): Linear(in_features=4096, out_features=1000, bias=True)
+    (6): Linear(in_features=1024, out_features=10, bias=True)
   )
 )
 Files already downloaded and verified
-Loss in epoch 0 :::: 1.6535186779011242
-all calls 25014405474
-negatives 13909292455
-55.61%
+Traceback (most recent call last):
+  File "test.py", line 60, in <module>
+    net = net.to(device=device)
+  File "/home/petra/miniconda3/envs/maobench/lib/python3.8/site-packages/torch/nn/modules/module.py", line 899, in to
+    return self._apply(convert)
+  File "/home/petra/miniconda3/envs/maobench/lib/python3.8/site-packages/torch/nn/modules/module.py", line 570, in _apply
+    module._apply(fn)
+  File "/home/petra/miniconda3/envs/maobench/lib/python3.8/site-packages/torch/nn/modules/module.py", line 570, in _apply
+    module._apply(fn)
+  File "/home/petra/miniconda3/envs/maobench/lib/python3.8/site-packages/torch/nn/modules/module.py", line 593, in _apply
+    param_applied = fn(param)
+  File "/home/petra/miniconda3/envs/maobench/lib/python3.8/site-packages/torch/nn/modules/module.py", line 897, in convert
+    return t.to(device, dtype if t.is_floating_point() or t.is_complex() else None, non_blocking)
+KeyboardInterrupt
