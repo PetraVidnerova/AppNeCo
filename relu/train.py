@@ -1,3 +1,4 @@
+import sys 
 from operator import mul
 from functools import reduce
 
@@ -10,7 +11,8 @@ from torchvision.datasets import CIFAR10
 from torch.utils.data.dataloader import DataLoader
 import torch.optim as optim
 
-    
+id_ = int(sys.argv[1])
+
 net = torchvision.models.AlexNet()
 print(net)
 
@@ -26,14 +28,14 @@ tranform_train = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
-torch.manual_seed(7)
+torch.manual_seed(id_)
 train_ds = CIFAR10("./data/", train=True, download=True, transform=tranform_train) #40,000 original images + transforms
 
 train_ds, val_ds = torch.utils.data.random_split(train_ds, [45000, 5000])
 train_dl = DataLoader(train_ds, batch_size=64, shuffle=True)
 val_dl = DataLoader(val_ds, batch_size=64, shuffle=False)
 
-test_ds = CIFAR10("./data/", train=True, download=True, transform=tranform_train) 
+test_ds = CIFAR10("./data/", train=False, download=True, transform=tranform_train) 
 test_dl = DataLoader(test_ds, batch_size=64, shuffle=False)
 
 
@@ -45,7 +47,7 @@ load_model = True
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(net.parameters(), lr= learning_rate) 
 
-for epoch in range(10):
+for epoch in range(20):
     loss_ep = 0
 
     print(f"Epoch {epoch} ... ")
@@ -81,7 +83,7 @@ for epoch in range(10):
             f"VAL accuracy: {float(num_correct) / float(num_samples) * 100:.2f}"
         )
 
-torch.save(net.state_dict(), "cifar10_7a.pt")
+torch.save(net.state_dict(), f"cifar10_net{id_}.pt")
 
 # test set
 net.eval()

@@ -1,3 +1,4 @@
+import sys 
 from operator import mul
 from functools import reduce
 
@@ -9,6 +10,8 @@ import torchvision.transforms as transforms
 from torchvision.datasets import CIFAR10
 from torch.utils.data.dataloader import DataLoader
 import torch.optim as optim
+
+id_ = sys.argv[1] 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -76,7 +79,7 @@ net = torchvision.models.AlexNet()
 net.classifier[4] = nn.Linear(4096,1024)
 net.classifier[6] = nn.Linear(1024,10)
 
-net.load_state_dict(torch.load("cifar10_7a.pt"))
+net.load_state_dict(torch.load(f"cifar10_net{id_}.pt"))
 print(net)
 
 net = hack_network(net)
