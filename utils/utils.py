@@ -32,3 +32,18 @@ def n_parameters(net):
             continue
 
     return manual_params
+
+def out_features(input_shape, layer):
+
+    if isinstance(layer, nn.ReLU):
+        return input_shape
+
+    if isinstance(layer, nn.Linear):
+        return (1, layer.out_features)
+
+    if isinstance(layer, nn.Dropout):
+        return input_shape
+
+
+    if isinstance(layer, nn.MaxPool2d):
+        
