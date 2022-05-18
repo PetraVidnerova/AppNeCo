@@ -52,9 +52,9 @@ tranform_train = transforms.Compose([
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
-torch.manual_seed(43)
-train_ds = CIFAR10("/opt/data/bench_net/", train=True, download=True, transform=tranform_train) #40,000 original images + transforms
-train_dl = DataLoader(train_ds, batch_size=64, shuffle=True)
+torch.manual_seed(7)
+train_ds = CIFAR10("data/", train=True, download=True, transform=tranform_train) #40,000 original images + transforms
+train_dl = DataLoader(train_ds, batch_size=1024, shuffle=True)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 net = net.to(device=device)
@@ -84,14 +84,16 @@ for epoch in range(10):
     with torch.no_grad():
         num_correct = 0
         num_samples = 0
-        for batch_idx, (data,targets) in enumerate(train_dl):
-            data = data.to(device=device)
-            targets = targets.to(device=device)
-            ## Forward Pass
-            scores = net(data)
-            _, predictions = scores.max(1)
-            num_correct += (predictions == targets).sum()
-            num_samples += predictions.size(0)
+        with tqdm(total=len(train_dl)) as t:
+            for batch_idx, (data,targets) in enumerate(train_dl):
+                data = data.to(device=device)
+                targets = targets.to(device=device)
+                ## Forward Pass
+                scores = net(data)
+                _, predictions = scores.max(1)
+                num_correct += (predictions == targets).sum()
+                num_samples += predictions.size(0)
+                t.update()
         print(
             f"Got {num_correct} / {num_samples} with accuracy {float(num_correct) / float(num_samples) * 100:.2f}"
         )
