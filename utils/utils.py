@@ -35,6 +35,9 @@ def n_parameters(net):
 
 def out_features(input_shape, layer):
 
+    if input_shape[1] != input_shape[2]:
+        raise NotImplementedError
+
     if isinstance(layer, nn.ReLU):
         return input_shape
 
@@ -46,4 +49,17 @@ def out_features(input_shape, layer):
 
 
     if isinstance(layer, nn.MaxPool2d):
+        return (input_shape[0],
+                floor((input_shape[1] - layer.kernel_size + 2*layer.padding)/layer.stride)+1,
+                floor((input_shape[1] - layer.kernel_size + 2*layer.padding)/layer.stride)+1
+                )
+
+    if isinstance(layer, nn.Conv2d):
+        return (layer.out_channels,
+                floor((input_shape[1] - layer.kernel_size[0] + 2*layer.padding[0])/layer.stride[0])+1,
+                floor((input_shape[1] - layer.kernel_size[0] + 2*layer.padding[0])/layer.stride[0])+1
+                )
+    
+
+
         
