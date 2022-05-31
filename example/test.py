@@ -1,11 +1,8 @@
 from tqdm import tqdm
 import torch
-import torchvision
-import torch.nn as nn
 import torchvision.transforms as transforms
 from torchvision.datasets import CIFAR10
 from torch.utils.data.dataloader import DataLoader
-import torch.optim as optim
 
 print("Loading net ...")
 if not torch.cuda.is_available():
