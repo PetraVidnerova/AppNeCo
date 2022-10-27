@@ -12,10 +12,14 @@ from torch.utils.data.dataloader import DataLoader
 import torch.optim as optim
 from torch.optim.lr_scheduler import LambdaLR
 
-net = torchvision.models.alexnet(pretrained=False)
+PRETRAINED=True if sys.argv[1] == "pretrained" else False
+BATCH_SIZE=int(sys.argv[2])
+
+
+net = torchvision.models.alexnet(pretrained=PRETRAINED)
 net.classifier[4] = nn.Linear(4096,1024)
 net.classifier[6] = nn.Linear(1024,10)
-#net.classifier.append(nn.Softmax(1)) softmax is part entropy loss
+#net.classifier.append(nn.Softmax(1)) softmax is part of entropy loss
 print(net)
 
 
@@ -29,10 +33,10 @@ transform_train = transforms.Compose([
 torch.manual_seed(42)
 train_ds = CIFAR10("../example/data/", train=True, download=True, transform=transform_train) #40,000 original images + transforms
 
-
+#BATCH_SIZE=512
 train_ds, val_ds = torch.utils.data.random_split(train_ds, [45000, 5000])
-train_dl = DataLoader(train_ds, batch_size=128, shuffle=True, num_workers=8)
-val_dl = DataLoader(val_ds, batch_size=128, shuffle=False, num_workers=8)
+train_dl = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=8)
+val_dl = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=8)
 
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -43,27 +47,10 @@ load_model = True
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(net.parameters(), lr= learning_rate) 
 
-def lr_lambda(epoch):
-
-    if epoch < 100:
-        return 1
-    if epoch < 1000:
-        return 0.1
-    if epoch < 2000:
-        return 0.01
-    if epoch < 3000:
-        return 0.001
-    if epoch < 4000:
-        return 0.0001
-    return 0.00001
-
-#lr_lambda = lambda epoch: 1 if epoch < 100 else 0.1
-    
-scheduler = LambdaLR(optimizer, lr_lambda=lr_lambda)
 
 net.train()
 
-for epoch in range(5000):
+for epoch in range(1000):
     loss_ep = 0
 
     print(f"Epoch {epoch} ... ")
@@ -99,10 +86,10 @@ for epoch in range(5000):
         print(
             f"VAL accuracy: {float(num_correct) / float(num_samples) * 100:.2f}"
         )
-    scheduler.step()
-    print("--->", scheduler.get_last_lr())
+    #scheduler.step()
+#    print("--->", scheduler.get_last_lr())
 
-torch.save(net, f"alexnet_from_scratch_cifar10.pt")
+torch.save(net, f"alexnet_{'pretrained' if PRETRAINED else 'from_scratch'}_{BATCH_SIZE}.pt")
 
 test_ds = CIFAR10("../example/data/", train=False, download=True,
                   transform=transform_train)
