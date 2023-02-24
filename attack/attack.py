@@ -12,15 +12,15 @@ import torchattacks as ta
 
 from utils import test  
 
-VARIANT= sys.argv[1]
+#VARIANT= sys.argv[1]
 
-NETWORK_FILE = f"../network_inspector/alexnet_{VARIANT}_cifar10.pt"
+NETWORK_FILE = sys.argv[1]
 
 print("Loading network ... ")
 net = torch.load(NETWORK_FILE)
 
 
-# attracks require imagese in [0,1]
+# attracks require images in [0,1]
 # buth the alexnet is trained to normalized images
 # so we add normalization layer (and do not include normalization in transform!)
 
@@ -58,10 +58,10 @@ test_ds = CIFAR10("../example/data/", train=False, download=True,
 test_dl = DataLoader(test_ds, batch_size=256, num_workers=16, shuffle=False)
 test(net, test_dl, device)
 
-train_ds = CIFAR10("../example/data/", train=True, download=True,
-                   transform=transform)
-train_dl = DataLoader(train_ds, batch_size=256, num_workers=16, shuffle=False)
-test(net, train_dl, device)
+# train_ds = CIFAR10("../example/data/", train=True, download=True,
+#                    transform=transform)
+# train_dl = DataLoader(train_ds, batch_size=256, num_workers=16, shuffle=False)
+# test(net, train_dl, device)
 
 # atk = torchattacks.PGD(net, eps=8/255, alpha=2/255, steps=4)
 # #adv_images = atk(images, labels)
@@ -82,13 +82,13 @@ attacks = [
     ta.MIFGSM(net, eps=8/255, alpha=2/255, steps=100, decay=0.1),
     ta.VANILA(net),
     ta.GN(net, std=0.1),
-    # ta.APGD(net, eps=8/255, steps=100, eot_iter=1, n_restarts=1, loss='ce'),
-    # ta.APGD(net, eps=8/255, steps=100, eot_iter=1, n_restarts=1, loss='dlr'),
-    # ta.APGDT(net, eps=8/255, steps=100, eot_iter=1, n_restarts=1),
+#    ta.APGD(net, eps=8/255, steps=100, eot_iter=1, n_restarts=1, loss='ce'),
+    ta.APGD(net, eps=8/255, steps=100, eot_iter=1, n_restarts=1, loss='dlr'),
+    ta.APGDT(net, eps=8/255, steps=100, eot_iter=1, n_restarts=1),
     ta.FAB(net, eps=8/255, steps=100, n_classes=10, n_restarts=1, targeted=False),
     ta.FAB(net, eps=8/255, steps=100, n_classes=10, n_restarts=1, targeted=True),
     ta.Square(net, eps=8/255, n_queries=5000, n_restarts=1, loss='ce'),
-    #    ta.AutoAttack(net, eps=8/255, n_classes=10, version='standard'),
+    ta.AutoAttack(net, eps=8/255, n_classes=10, version='standard'),
     ta.OnePixel(net, pixels=5, inf_batch=50),
     ta.DeepFool(net, steps=100),
     ta.DIFGSM(net, eps=8/255, alpha=2/255, steps=100, diversity_prob=0.5, resize_rate=0.9)
@@ -99,7 +99,7 @@ data_loader = DataLoader(test_ds, batch_size=64, num_workers=16, shuffle=False)
 
 for attack in attacks :
     
-    print(attack.__class__.__name__)
+    print("LOG: Attack name", attack.__class__.__name__)
     
     correct = 0
     total = 0
@@ -118,5 +118,5 @@ for attack in attacks :
     #     imshow(torchvision.utils.make_grid(adv_images.cpu().data, normalize=True), [imagnet_data.classes[i] for i in pre])
 
     print('Total elapsed time (sec): %.2f' % (time.time() - start))
-    print('Robust accuracy: %.2f %%' % (100 * float(correct) / total))
+    print('LOG: Robust accuracy: %.2f %%' % (100 * float(correct) / total))
 
