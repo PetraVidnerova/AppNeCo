@@ -8,9 +8,12 @@ files = [
 ]
 print(files)
 
+def get_mul_name(filename):
+    return filename.split("_")[1].split(".")[0]
+
 results_list = [] 
 for filename in files:
-    mul_name = filename[6:10]
+    mul_name = get_mul_name(filename)
 
     df = pd.read_csv(filename, header=None)
     df.columns = [mul_name]
@@ -26,7 +29,7 @@ print(df)
 
 
 for filename in files:
-    mul_name = filename[6:10]
+    mul_name = get_mul_name(filename)
     
     with open(f"mul8u_{mul_name}.bin_robust_accuracy.log") as f:
         for line in f:
@@ -36,7 +39,10 @@ for filename in files:
                 break
     df.loc[mul_name, "accuracy"] = acc
 
+df = df[["accuracy", "mean", "std", "min", "max"]]
 print(df)
+
+
 
 df_sel = df[df["accuracy"] > 96.0]
 print(df_sel)
