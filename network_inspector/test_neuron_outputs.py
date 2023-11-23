@@ -30,12 +30,14 @@ print(net)
 def flatten(x):
     return torch.flatten(x, 1)
 
-layer_outputs=[layer for layer in net.features]
-layer_outputs.append(net.avgpool)
-layer_outputs.append(flatten)
-layer_outputs.extend(
-    [layer for layer in net.classifier if not isinstance(layer, Dropout)]
-)
+#layer_outputs=[layer for layer in net.features]
+#layer_outputs.append(net.avgpool)
+#layer_outputs.append(flatten)
+#layer_outputs.extend(
+layer_outputs = [layer for layer in net.classifier if not isinstance(layer, Dropout)]
+layer_names = [layer.__class__.__name__ for layer in net.classifier if not isinstance(layer, Dropout)]
+#)
+first_part = lambda x: flatten(net.avgpool(net.features(x)))
 
 #
 # Prepare dataset 
@@ -68,12 +70,13 @@ with torch.no_grad():
         targets = targets.to(device=device)
         # Forward Pass
         #scores = net(data)
-        output = data
+        output = first_part(data)
         for i, layer in enumerate(layer_outputs):
             output = layer(output)
-            output_map = output<=0
-            #            output_values_list.append(output_map.cpu().numpy().flatten())
-            output_values_list.append(flatten(output_map))
+            if layer_names[i] == "ReLU":
+                output_map = output<=0
+                #            output_values_list.append(output_map.cpu().numpy().flatten())
+                output_values_list.append(flatten(output_map))
         scores = output
         # geting predictions
         _, predictions = scores.max(1)
