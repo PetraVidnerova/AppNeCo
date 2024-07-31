@@ -272,6 +272,58 @@ def create_c(compnet, inputs):
     c = torch.hstack([b, W.flatten()])
     return c 
 
+def get_subnetwork(net, i):
+    # network up to i-th linear layer
+    layers = []
+    for layer in net:
+        layers.append(layer)
+        if isinstance(layer, nn.Linear):
+            i -= 1
+        if i < 0:
+            break
+    return nn.Sequential(*layers)
+    
+
+def create_upper_bounds(net, inputs):
+
+    # extract the sequential 
+    net = next(iter(net.children()))
+    assert isinstance(net, nn.Sequential)
+    
+    saturations = eval_one_sample(net, inputs)
+
+    A_list = [] 
+    for i, saturation in enumerate(saturations):
+        subnet = get_subnetwork(net, i)
+        if i == 0:
+            target = subnet
+        else:
+            target = squeeze_network(prune_network(subnet, saturations[:i]))
+
+        W = target[-1].weight.data
+        b = target[-1].bias.data
+
+        # saturation: True ~ U, False ~ S   
+        W_lower = W[torch.logical_not(saturation).flatten()]
+        b_lower = b[torch.logical_not(saturation).flatten()].reshape(-1, 1)
+        W_higher = W[saturation.flatten()]
+        b_higher = b[saturation.flatten()].reshape(-1, 1)
+        
+        W = torch.vstack([W_lower, -1*W_higher])
+        b = torch.vstack([b_lower, -1*b_higher])
+
+        A = torch.hstack([b, W])
+        
+        A_list.append(A)
+
+
+    return torch.vstack(A_list)
+
+def optimize(c, A_ub, b_ub, A_eq, b_eq, l, u):
+
+    
+    
+
     
 def main(): 
 
@@ -298,17 +350,21 @@ def main():
         c = -1*create_c(compnet, inputs)
 
         # A_ub @ x <= b_ub
-
+        A_ub = create_upper_bounds(net, inputs)
+        b_ub = torch.zeros((A_ub.shape[0],)).double()
+        
         # A_eq @ x == b_eq
-        A_eq = torch.zeros((1, N+1))
+        A_eq = torch.zeros((1, N+1)).double()
         A_eq[0, 0] = 1.0
-        b_eq = torch.zeros((N+1,))
-        b_eq[1, 0] = 1.0                    
+        b_eq = torch.zeros((N+1,)).double()
+        b_eq[0] = 1.0                    
 
         # l <= x <= u 
-        l = torch.full(INPUT_SIZE, -0.5, dtype=torch.float64).flatten()  
-        u = torch.full(INPUT_SIZE, 3.0, dtype=torch.float64).flatten()
+        l = torch.full(INPUT_SIZE, -0.5, dtype=torch.float64).flatten().double()  
+        u = torch.full(INPUT_SIZE, 3.0, dtype=torch.float64).flatten().double()
 
+        y = optimize(c, A_ub, b_ub, A_eq, b_eq, l, u) 
+        
         exit()
         
 if __name__ == "__main__":
