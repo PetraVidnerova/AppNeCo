@@ -320,9 +320,18 @@ def create_upper_bounds(net, inputs):
     return torch.vstack(A_list)
 
 def optimize(c, A_ub, b_ub, A_eq, b_eq, l, u):
+    c = c.cpu().numpy()
+    A_ub, b_ub = A_ub.cpu().numpy(), b_ub.cpu().numpy()
+    A_eq, b_eq = A_eq.cpu().numpy(), b_eq.cpu().numpy()
+    l, u = l.cpu().numpy(), u.cpu().numpy()
 
     
+    from scipy.optimize import linprog
+
+    print(c.shape)
+    print(A_ub.shape)
     
+    return linprog(c, A_ub, b_ub, A_eq, b_eq, bounds=(l,u))
 
     
 def main(): 
@@ -364,7 +373,7 @@ def main():
         u = torch.full(INPUT_SIZE, 3.0, dtype=torch.float64).flatten().double()
 
         y = optimize(c, A_ub, b_ub, A_eq, b_eq, l, u) 
-        
+        print(y)
         exit()
         
 if __name__ == "__main__":
