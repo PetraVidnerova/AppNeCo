@@ -166,12 +166,16 @@ def test_squeeze():
 def lower_precision(net):
     return net.half().double()
 
-def stack_linear_layers(layer1, layer2):
+def stack_linear_layers(layer1, layer2, common_input=False):
 
-    wide_W1 = torch.hstack([layer1.weight.data,
-                            torch.zeros(*layer1.weight.data.shape).double().cuda()])
-    wide_W2 = torch.hstack([torch.zeros(*layer2.weight.data.shape).double().cuda(),
-                            layer2.weight.data])
+    if common_input:
+        wide_W1 =  layer1.weight.data
+        wide_W2 =  layer2.weight.data 
+    else:
+        wide_W1 = torch.hstack([layer1.weight.data,
+                                torch.zeros(*layer1.weight.data.shape).double().cuda()])
+        wide_W2 = torch.hstack([torch.zeros(*layer2.weight.data.shape).double().cuda(),
+                                layer2.weight.data])
                             
     new_weight = torch.vstack([wide_W1, wide_W2])
 
@@ -222,6 +226,8 @@ def create_comparing_network(net, net2):
     sequence2 = next(iter(net2.children()))
     assert isinstance(sequence2, nn.Sequential)
 
+    first_linear = True
+    
     for layer1, layer2  in zip(sequence1, sequence2):
         if isinstance(layer1, nn.Flatten):
             assert isinstance(layer2, nn.Flatten)
@@ -234,7 +240,8 @@ def create_comparing_network(net, net2):
             layer_list.append(layer1)
         elif isinstance(layer1, nn.Linear):
             assert isinstance(layer2, nn.Linear)
-            layer_list.append(stack_linear_layers(layer1, layer2))
+            layer_list.append(stack_linear_layers(layer1, layer2, common_input=first_linear))
+            first_linear = False
         else:
             raise NotImplementedError
 
@@ -260,10 +267,10 @@ def create_comparing_network(net, net2):
 def create_c(compnet, inputs):
     assert inputs.shape[0] == 1 # one sample in a batch
 
-    wide_inputs = torch.hstack([inputs, inputs])
+    #    wide_inputs = torch.hstack([inputs, inputs]) TODO: delete this line
 
     # reduce and squeeze compnet 
-    saturations = eval_one_sample(compnet, wide_inputs)
+    saturations = eval_one_sample(compnet, inputs)
     target_net = squeeze_network(prune_network(compnet, saturations))
 
     W = target_net[-1].weight.data
@@ -323,16 +330,14 @@ def optimize(c, A_ub, b_ub, A_eq, b_eq, l, u):
     c = c.cpu().numpy()
     A_ub, b_ub = A_ub.cpu().numpy(), b_ub.cpu().numpy()
     A_eq, b_eq = A_eq.cpu().numpy(), b_eq.cpu().numpy()
-    l, u = l.cpu().numpy(), u.cpu().numpy()
 
     
     from scipy.optimize import linprog
 
-    print(c.shape)
-    print(A_ub.shape)
-    
-    return linprog(c, A_ub, b_ub, A_eq, b_eq, bounds=(l,u))
+    res = linprog(c, A_ub, b_ub, A_eq, b_eq, bounds=(l, u))
+    print(res)
 
+    return res.x
     
 def main(): 
 
@@ -365,16 +370,15 @@ def main():
         # A_eq @ x == b_eq
         A_eq = torch.zeros((1, N+1)).double()
         A_eq[0, 0] = 1.0
-        b_eq = torch.zeros((N+1,)).double()
+        b_eq = torch.zeros((1,)).double()
         b_eq[0] = 1.0                    
 
         # l <= x <= u 
-        l = torch.full(INPUT_SIZE, -0.5, dtype=torch.float64).flatten().double()  
-        u = torch.full(INPUT_SIZE, 3.0, dtype=torch.float64).flatten().double()
+        l = -0.5
+        u = 3.0
 
         y = optimize(c, A_ub, b_ub, A_eq, b_eq, l, u) 
         print(y)
-        exit()
         
 if __name__ == "__main__":
 
