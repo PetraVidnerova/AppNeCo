@@ -12,26 +12,18 @@ def eval_one_sample(net, sample):
     saturations = []
     
     outputs = sample
-    for child in net.children():
-        assert isinstance(child, nn.Sequential)
-        for layer in child:
-            outputs = layer(outputs)
-            if isinstance(layer, nn.ReLU):
-                sat1 = outputs != 0
-                sat2 = outputs == 0
-                sat2 = torch.logical_not(sat2)
-
-                assert torch.all(sat1 == sat2)
-                
-                saturations.append(outputs != 0)     
+    assert isinstance(net, nn.Sequential)
+    for layer in net:
+        outputs = layer(outputs)
+        if isinstance(layer, nn.ReLU):
+            saturations.append(outputs != 0)     
     return saturations
             
 def prune_network(net, saturations):
     layers = []
-    for child in net.children():
-        assert isinstance(child, nn.Sequential)
-        for layer in child:
-            layers.append(layer)
+    assert isinstance(net, nn.Sequential)
+    for layer in net:
+        layers.append(layer)
             
     for j, saturation in enumerate(saturations):
 
@@ -189,6 +181,36 @@ def stack_linear_layers(layer1, layer2):
     
     return new_layer
 
+def magic_layer(layer1, layer2):
+    """ equation (13) and (14) in Jirka's document """
+    
+    W1 = layer1.weight.data
+    b1 = layer1.bias.data
+
+    W2 = layer2.weight.data
+    b2 = layer2.bias.data
+
+    # magic_b1 = b1 - b2
+    # mabic_b2 = b2 - b1
+    magic_b = torch.hstack([b1-b2, b2-b1])
+
+    # magic W  =  W1 -W2
+    #            -W1  W2 
+    magic_W = torch.vstack(
+        [
+            torch.hstack([W1, -W2]),
+            torch.hstack([-W1, W2])
+        ]
+    )
+
+    new_layer = nn.Linear(magic_W.shape[1], magic_W.shape[0]).double()
+    new_layer.weight.data = magic_W
+    new_layer.bias.data = magic_b
+
+    return new_layer
+    
+    
+    
 def create_comparing_network(net, net2):
     twin = lower_precision(net2) 
 
@@ -216,13 +238,40 @@ def create_comparing_network(net, net2):
         else:
             raise NotImplementedError
 
+    assert isinstance(sequence1[-1], nn.Linear)
+    assert isinstance(sequence2[-1], nn.Linear)
+    assert isinstance(layer_list[-1], nn.Linear)
+
+    layer_list = layer_list[:-1]
+
+    layer_list.append(magic_layer(sequence1[-1], sequence2[-1]))
+    
+        
     layer_list.append(nn.ReLU())
     
-    output_layer = nn.Linear(20, 1) # TODO fix  the number
-    
+    output_layer = nn.Linear(20, 1).double() # TODO fix  the number
+    output_layer.weight.data = torch.ones(1, 20).double()
+    output_layer.bias.data = torch.zeros(1).double()
+
     layer_list.append(output_layer)
     
     return nn.Sequential(*layer_list).cuda()
+
+def create_c(compnet, inputs):
+    assert inputs.shape[0] == 1 # one sample in a batch
+
+    wide_inputs = torch.hstack([inputs, inputs])
+
+    # reduce and squeeze compnet 
+    saturations = eval_one_sample(compnet, wide_inputs)
+    target_net = squeeze_network(prune_network(compnet, saturations))
+
+    W = target_net[-1].weight.data
+    b = target_net[-1].bias.data
+
+    c = torch.hstack([b, W.flatten()])
+    return c 
+
     
 def main(): 
 
@@ -241,20 +290,25 @@ def main():
 
     data = create_dataset(train=False, batch_size=BATCH_SIZE)
 
+        
     for inputs, labels in data:
         inputs = inputs.cuda().double()
-        assert inputs.shape[0] == 1 # one sample in a batch
 
-        wide_inputs = torch.hstack([inputs, inputs])
+        # min c @ x
+        c = -1*create_c(compnet, inputs)
 
-        outputs = net(inputs)
-        outputs2 = net2(inputs)
-        wide_outputs = compnet(wide_inputs)
+        # A_ub @ x <= b_ub
 
-        print(outputs)
-        print(outputs2)
-        print(wide_outputs)
-        
+        # A_eq @ x == b_eq
+        A_eq = torch.zeros((1, N+1))
+        A_eq[0, 0] = 1.0
+        b_eq = torch.zeros((N+1,))
+        b_eq[1, 0] = 1.0                    
+
+        # l <= x <= u 
+        l = torch.full(INPUT_SIZE, -0.5, dtype=torch.float64).flatten()  
+        u = torch.full(INPUT_SIZE, 3.0, dtype=torch.float64).flatten()
+
         exit()
         
 if __name__ == "__main__":
