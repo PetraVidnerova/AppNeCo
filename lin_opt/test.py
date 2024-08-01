@@ -337,7 +337,7 @@ def optimize(c, A_ub, b_ub, A_eq, b_eq, l, u):
     res = linprog(c, A_ub, b_ub, A_eq, b_eq, bounds=(l, u))
     print(res)
 
-    return res.x
+    return res.fun 
     
 def main(): 
 
@@ -377,8 +377,8 @@ def main():
         l = -0.5
         u = 3.0
 
-        y = optimize(c, A_ub, b_ub, A_eq, b_eq, l, u) 
-        print(y)
+        err = optimize(c, A_ub, b_ub, A_eq, b_eq, l, u) 
+        print("result:", -err)
         
 if __name__ == "__main__":
 
