@@ -1,3 +1,4 @@
+import numpy as np
 import tqdm
 import torch
 import torch.nn as nn
@@ -59,10 +60,11 @@ def prune_network(net, saturations):
         W, b = layers[i].weight, layers[i].bias
 
         W2 = W[:, saturation]
+        b2 = torch.clone(b)
 
         new_post_layer = nn.Linear(W2.shape[1], W2.shape[0]).double()
         new_post_layer.weight.data = W2
-        new_post_layer.bias.data = b
+        new_post_layer.bias.data = b2
         # bias stays the same
 
         layers[i] = new_post_layer
@@ -138,6 +140,7 @@ def test_squeeze():
     N = 1 * 28 * 28 
 
     net = load_network(MODEL, NETWORK)
+    net = next(iter(net.children())) # extract the nn.Sequential
 
     data = create_dataset(train=False, batch_size=BATCH_SIZE)
 
@@ -159,10 +162,82 @@ def test_squeeze():
         print(outputs)
         print(outputs3)
         print(nn.functional.mse_loss(outputs, outputs3))
+
+        assert nn.functional.mse_loss(outputs, outputs3).isclose(torch.tensor(0.0, dtype=torch.float64))
+        print("oh yes")
+
+def test_compnet():
+
+    BATCH_SIZE=1    
+    NETWORK="mnist_dense_net.pt"
+    MODEL = SmallDenseNet 
+    LAYERS = 4
+    INPUT_SIZE = (1, 28, 28) 
+    N = 1 * 28 * 28 
+
+    net = load_network(MODEL, NETWORK)
+    net2 = load_network(MODEL, NETWORK)
+    compnet = create_comparing_network(net, net2)
+
+    net2 = lower_precision(net2)
+    
+    print(compnet)
+
+    data = create_dataset(train=False, batch_size=BATCH_SIZE)
+
         
-        exit()
+    for inputs, labels in data:
+        inputs = inputs.cuda().double()
 
+        output = net(inputs)
+        output2 = net2(inputs)
 
+        err1 = (output-output2).abs().sum()
+        err2 = compnet(inputs)
+
+        assert err1.isclose(err2)
+        print("oh yes")
+
+def test_squeezed_compnet():
+
+    BATCH_SIZE=1    
+    NETWORK="mnist_dense_net.pt"
+    MODEL = SmallDenseNet 
+    LAYERS = 4
+    INPUT_SIZE = (1, 28, 28) 
+    N = 1 * 28 * 28 
+
+    net = load_network(MODEL, NETWORK)
+    net2 = load_network(MODEL, NETWORK)
+    compnet = create_comparing_network(net, net2)
+
+    net2 = lower_precision(net2)
+    
+    print(compnet)
+
+    data = create_dataset(train=False, batch_size=BATCH_SIZE)
+
+        
+    for inputs, labels in data:
+        inputs = inputs.cuda().double()
+
+        output = net(inputs)
+        output2 = net2(inputs)
+
+        err1 = (output-output2).abs().sum()
+        err2 = compnet(inputs)
+
+        assert err1.isclose(err2)
+
+        saturations = eval_one_sample(compnet, inputs)        
+        target_net = squeeze_network(prune_network(compnet, saturations))
+
+        err3 = target_net(inputs)
+        assert err1.isclose(err3)
+        
+        print("oh yes")
+
+        
 def lower_precision(net):
     return net.half().double()
 
@@ -223,7 +298,7 @@ def create_comparing_network(net, net2):
     sequence1 = next(iter(net.children()))
     assert isinstance(sequence1, nn.Sequential)
 
-    sequence2 = next(iter(net2.children()))
+    sequence2 = next(iter(twin.children()))
     assert isinstance(sequence2, nn.Sequential)
 
     first_linear = True
@@ -276,7 +351,10 @@ def create_c(compnet, inputs):
     W = target_net[-1].weight.data
     b = target_net[-1].bias.data
 
+    assert W.shape[0] == 1
+    
     c = torch.hstack([b, W.flatten()])
+
     return c 
 
 def get_subnetwork(net, i):
@@ -294,7 +372,7 @@ def get_subnetwork(net, i):
 def create_upper_bounds(net, inputs):
 
     # extract the sequential 
-    net = next(iter(net.children()))
+    #    net = next(iter(net.children())) NO NEED FOR COMPNET
     assert isinstance(net, nn.Sequential)
     
     saturations = eval_one_sample(net, inputs)
@@ -337,7 +415,9 @@ def optimize(c, A_ub, b_ub, A_eq, b_eq, l, u):
     res = linprog(c, A_ub, b_ub, A_eq, b_eq, bounds=(l, u))
     print(res)
 
-    return res.fun 
+    assert res.success
+    
+    return res.fun, res.x 
     
 def main(): 
 
@@ -351,21 +431,27 @@ def main():
     net = load_network(MODEL, NETWORK)
     net2 = load_network(MODEL, NETWORK)
     compnet = create_comparing_network(net, net2)
-
+    
     print(compnet)
 
     data = create_dataset(train=False, batch_size=BATCH_SIZE)
 
-        
-    for inputs, labels in data:
+    i = 0    
+    for inputs, labels in tqdm.tqdm(data):
         inputs = inputs.cuda().double()
 
+        out1 = net(inputs)
+        out2 = net2(inputs)
+        real_error = (out2 - out1).abs().sum().item()
+        computed_error = compnet(inputs).item()
+        
+        
         # min c @ x
         c = -1*create_c(compnet, inputs)
 
         # A_ub @ x <= b_ub
-        A_ub = create_upper_bounds(net, inputs)
-        b_ub = torch.zeros((A_ub.shape[0],)).double()
+        A_ub = create_upper_bounds(compnet, inputs)
+        b_ub = torch.zeros((A_ub.shape[0],), dtype=torch.float64)
         
         # A_eq @ x == b_eq
         A_eq = torch.zeros((1, N+1)).double()
@@ -377,9 +463,29 @@ def main():
         l = -0.5
         u = 3.0
 
-        err = optimize(c, A_ub, b_ub, A_eq, b_eq, l, u) 
+        err, x = optimize(c, A_ub, b_ub, A_eq, b_eq, l, u) 
         print("result:", -err)
+
+        assert np.isclose(x[0], 1.0)
+
+        y = torch.tensor(x[1:], dtype=torch.float64).reshape(1, -1).cuda()
+        err_by_net = compnet(y).item()
+        
+        err_by_sol = (c @ torch.tensor(x, dtype=torch.float64).cuda()).item()
+
+        assert np.isclose(-err, err_by_net)
+        assert np.isclose(err, err_by_sol)
+
+        with open("results/results.csv", "a") as f:
+            print(f"{real_error:.6f},{computed_error:.6f},{-err:.6f}", file=f)
+        np.save(f"results/{i}.npy", np.array(x[1:], dtype=np.float64))
+        i += 1
         
 if __name__ == "__main__":
+
+    # test_squeeze() # 1.
+    #test_compnet() # 2.
+    #test_squeezed_compnet() # 3.
+
 
     main()
