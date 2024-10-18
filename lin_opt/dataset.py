@@ -32,5 +32,5 @@ def create_dataset(train=True, batch_size=8):
                                                 num_workers=2)
         return trainloader, valloader
     return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False,
-                                       num_workers=2)
+                                       num_workers=1)
 
