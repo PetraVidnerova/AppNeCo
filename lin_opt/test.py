@@ -417,7 +417,35 @@ def optimize(c, A_ub, b_ub, A_eq, b_eq, l, u):
 
     assert res.success
     
-    return res.fun, res.x 
+    return res.fun, res.x
+
+def check_upper_bounds(A, b, input1, input2):
+
+    A = A.cpu()
+
+    print(A.shape)
+    
+    input1 = input1.cpu()
+    
+    input1 = torch.hstack([torch.tensor(1),
+                           input1.reshape(-1)])
+    input2 = torch.hstack([torch.tensor(1),
+                           torch.tensor(input2)])
+    print(input1.shape)
+    print(input2.shape)
+
+    result = A @ input1
+    print("Check upper bounds 1: ", torch.all(result <= b))
+
+    result = A @ input2 
+    print("Check upper bounds 2: ", torch.all(result <= b))
+
+    wrong_indexes = torch.logical_not(result <= b)
+    print(wrong_indexes.sum())
+    
+    print(result[wrong_indexes])
+    
+    exit()
     
 def main(): 
 
@@ -476,6 +504,8 @@ def main():
         assert np.isclose(-err, err_by_net)
         assert np.isclose(err, err_by_sol)
 
+        check_upper_bounds(A_ub, b_ub, inputs, x[1:])
+        
         with open("results/results.csv", "a") as f:
             print(f"{real_error:.6f},{computed_error:.6f},{-err:.6f}", file=f)
         np.save(f"results/{i}.npy", np.array(x[1:], dtype=np.float64))
