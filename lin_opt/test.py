@@ -6,6 +6,7 @@ import torch.nn as nn
 from network import SmallDenseNet, SmallConvNet
 from dataset import create_dataset
 
+RESULT_PATH="results_debug"
 
 def eval_one_sample(net, sample):
     """evaluates one sample and returns boolean vector 
@@ -504,11 +505,12 @@ def main():
         assert np.isclose(-err, err_by_net)
         assert np.isclose(err, err_by_sol)
 
-        check_upper_bounds(A_ub, b_ub, inputs, x[1:])
+        #        check_upper_bounds(A_ub, b_ub, inputs, x[1:])
         
-        with open("results/results.csv", "a") as f:
+        with open(f"{RESULT_PATH}/results.csv", "a") as f:
             print(f"{real_error:.6f},{computed_error:.6f},{-err:.6f}", file=f)
-        np.save(f"results/{i}.npy", np.array(x[1:], dtype=np.float64))
+        np.save(f"{RESULT_PATH}/{i}.npy", np.array(x[1:], dtype=np.float64))
+        np.save(f"{RESULT_PATH}/{i}_orig.npy", inputs.cpu().numpy())
         i += 1
         
 if __name__ == "__main__":
