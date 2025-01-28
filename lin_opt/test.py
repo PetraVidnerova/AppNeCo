@@ -1,14 +1,35 @@
+import click
 import numpy as np
 import tqdm
 import torch
 import torch.nn as nn
+import sys
 
 from network import SmallDenseNet, SmallConvNet
 from dataset import create_dataset
+from quant_utils import Quantization
 
-RESULT_PATH="results_debug"
+TOL = 1e-8
+TOL2 = 1e-9
 
 def eval_one_sample(net, sample):
+    """evaluates one sample and returns boolean vector 
+    of relu's saturations"""
+    saturations = []
+    
+    outputs = sample
+    if not isinstance(net, nn.Sequential):
+        net = next(iter(net.children()))
+    assert isinstance(net, nn.Sequential)
+    
+    for layer in net:
+        outputs = layer(outputs)
+        if isinstance(layer, nn.ReLU):
+            saturations.append(outputs != 0)
+            #saturations.append(torch.logical_not(outputs.isclose(torch.tensor(0, dtype=torch.float64), atol=TOL, rtol=0)))     
+    return saturations
+
+def eval_one_sample_test(net, sample):
     """evaluates one sample and returns boolean vector 
     of relu's saturations"""
     saturations = []
@@ -18,9 +39,10 @@ def eval_one_sample(net, sample):
     for layer in net:
         outputs = layer(outputs)
         if isinstance(layer, nn.ReLU):
-            saturations.append(outputs != 0)     
+            saturations.append(torch.logical_not(outputs.isclose(torch.tensor(0, dtype=torch.float64), atol=TOL, rtol=0)))     
     return saturations
-            
+
+
 def prune_network(net, saturations):
     layers = []
     assert isinstance(net, nn.Sequential)
@@ -239,8 +261,12 @@ def test_squeezed_compnet():
         print("oh yes")
 
         
-def lower_precision(net):
-    return net.half().double()
+def lower_precision(net, bits=16):
+    if bits == 16:
+        return net.half().double()
+    else:
+        quant = Quantization(net, bits)
+        return quant.convert(net).cuda()
 
 def stack_linear_layers(layer1, layer2, common_input=False):
 
@@ -291,8 +317,8 @@ def magic_layer(layer1, layer2):
     
     
     
-def create_comparing_network(net, net2):
-    twin = lower_precision(net2) 
+def create_comparing_network(net, net2, bits=16):
+    twin = lower_precision(net2, bits=bits) 
 
     layer_list = []
 
@@ -378,7 +404,8 @@ def create_upper_bounds(net, inputs):
     
     saturations = eval_one_sample(net, inputs)
 
-    A_list = [] 
+    A_list = []
+    bound_list = [] 
     for i, saturation in enumerate(saturations):
         subnet = get_subnetwork(net, i)
         if i == 0:
@@ -394,16 +421,20 @@ def create_upper_bounds(net, inputs):
         b_lower = b[torch.logical_not(saturation).flatten()].reshape(-1, 1)
         W_higher = W[saturation.flatten()]
         b_higher = b[saturation.flatten()].reshape(-1, 1)
+
+        bound_for_lower = torch.full((W_lower.shape[0],), -TOL, dtype=torch.float64)
+        bound_for_higher = torch.full((W_higher.shape[0],), -TOL, dtype=torch.float64)
         
         W = torch.vstack([W_lower, -1*W_higher])
         b = torch.vstack([b_lower, -1*b_higher])
-
+        
         A = torch.hstack([b, W])
+        bound = torch.hstack([bound_for_lower, bound_for_higher])
         
         A_list.append(A)
+        bound_list.append(bound)
 
-
-    return torch.vstack(A_list)
+    return torch.vstack(A_list), torch.hstack(bound_list)
 
 def optimize(c, A_ub, b_ub, A_eq, b_eq, l, u):
     c = c.cpu().numpy()
@@ -436,20 +467,41 @@ def check_upper_bounds(A, b, input1, input2):
     print(input2.shape)
 
     result = A @ input1
-    print("Check upper bounds 1: ", torch.all(result <= b))
-
+    print("Check upper bounds 1: ", torch.all(result <= TOL + TOL2))
+    assert torch.all(result <= TOL + TOL2)
+    
     result = A @ input2 
-    print("Check upper bounds 2: ", torch.all(result <= b))
-
-    wrong_indexes = torch.logical_not(result <= b)
+    print("Check upper bounds 2: ", torch.all(result <= TOL + TOL2 ))
+    assert torch.all(result <= TOL + TOL2)
+    
+    wrong_indexes = torch.logical_not(result <= TOL + TOL2)
     print(wrong_indexes.sum())
     
     print(result[wrong_indexes])
-    
-    exit()
-    
-def main(): 
 
+    
+    
+
+def check_saturations(net, input1, input2):
+    
+    input2 = torch.tensor(input2).reshape(1, 1, 28, 28).cuda()
+
+    saturation1 = eval_one_sample(net, input1)
+    saturation2 = eval_one_sample(net, input2)
+
+    saturation1 = torch.hstack(saturation1)
+    saturation2 = torch.hstack(saturation2)
+    
+    print("Check saturations", torch.all(saturation1 == saturation2).item())
+    assert torch.all(saturation1 == saturation2)
+
+@click.command()
+@click.argument("start", type=int)
+@click.argument("end", type=int)
+@click.option("-b", "--bits", default=16)
+@click.option("--outputdir", default="results")
+def main(start, end, bits, outputdir): 
+    
     BATCH_SIZE=1    
     NETWORK="mnist_dense_net.pt"
     MODEL = SmallDenseNet 
@@ -459,14 +511,16 @@ def main():
 
     net = load_network(MODEL, NETWORK)
     net2 = load_network(MODEL, NETWORK)
-    compnet = create_comparing_network(net, net2)
+    compnet = create_comparing_network(net, net2, bits=bits)
     
     print(compnet)
 
     data = create_dataset(train=False, batch_size=BATCH_SIZE)
 
     i = 0    
-    for inputs, labels in tqdm.tqdm(data):
+    for i, (inputs, labels) in enumerate(data):
+        if i < start or i >= end:
+            continue
         inputs = inputs.cuda().double()
 
         out1 = net(inputs)
@@ -479,8 +533,9 @@ def main():
         c = -1*create_c(compnet, inputs)
 
         # A_ub @ x <= b_ub
-        A_ub = create_upper_bounds(compnet, inputs)
-        b_ub = torch.zeros((A_ub.shape[0],), dtype=torch.float64)
+        A_ub, b_ub = create_upper_bounds(compnet, inputs)
+        #b_ub = torch.zeros((A_ub.shape[0],), dtype=torch.float64)
+        #b_ub = torch.full((A_ub.shape[0],), -TOL, dtype=torch.float64)
         
         # A_eq @ x == b_eq
         A_eq = torch.zeros((1, N+1)).double()
@@ -502,15 +557,20 @@ def main():
         
         err_by_sol = (c @ torch.tensor(x, dtype=torch.float64).cuda()).item()
 
-        assert np.isclose(-err, err_by_net)
-        assert np.isclose(err, err_by_sol)
-
-        #        check_upper_bounds(A_ub, b_ub, inputs, x[1:])
+        try: 
+            assert np.isclose(-err, err_by_net)
+            assert np.isclose(err, err_by_sol)
+            
+            check_upper_bounds(A_ub, b_ub, inputs, x[1:])
+            check_saturations(net, inputs, x[1:])
+        except AssertionError:
+            print(" *** Optimisation FAILED. *** ")
+            continue
         
-        with open(f"{RESULT_PATH}/results.csv", "a") as f:
+        with open(f"{outputdir}/results_{start}_{end}.csv", "a") as f:
             print(f"{real_error:.6f},{computed_error:.6f},{-err:.6f}", file=f)
-        np.save(f"{RESULT_PATH}/{i}.npy", np.array(x[1:], dtype=np.float64))
-        np.save(f"{RESULT_PATH}/{i}_orig.npy", inputs.cpu().numpy())
+        #np.save(f"{RESULT_PATH}/{i}.npy", np.array(x[1:], dtype=np.float64))
+        #np.save(f"{RESULT_PATH}/{i}_orig.npy", inputs.cpu().numpy())
         i += 1
         
 if __name__ == "__main__":
