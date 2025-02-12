@@ -14,34 +14,34 @@ def check_upper_bounds(A, b, input1, input2):
 
     A = A.cpu()
 
-    print(A.shape)
-    
-    input1 = input1.cpu()
-    
-    input1 = torch.hstack([torch.tensor(1),
-                           input1.reshape(-1)])
-    input2 = torch.hstack([torch.tensor(1),
-                           torch.tensor(input2)])
-    print(input1.shape)
-    print(input2.shape)
+    if input1 is not None:
+        input1 = input1.cpu()
+        input1 = torch.hstack([torch.tensor(1),
+                               input1.reshape(-1)])
 
-    result = A @ input1
-    print("Check upper bounds 1: ", torch.all(result <= TOL + TOL2))
-    if not torch.all(result <= TOL + TOL2):
-        print("upper bounds 1 failed")
+    if input2 is not None:
+        input2 = torch.hstack([torch.tensor(1),
+                               torch.tensor(input2)])
+
+    if input1 is not None:
+        result = A @ input1
+        print("Check upper bounds 1: ", torch.all(result <= TOL + TOL2))
+        if not torch.all(result <= TOL + TOL2):
+            print("upper bounds 1 failed")
     
-    assert torch.all(result <= TOL + TOL2)
+        assert torch.all(result <= TOL + TOL2)
+
+    if input2 is not None:
+        result = A @ input2 
+        print("Check upper bounds 2: ", torch.all(result <= TOL + TOL2 ))
+        if not torch.all(result <= TOL + TOL2):
+            print("upper bounds 2 failed")
+        assert torch.all(result <= TOL + TOL2)
     
-    result = A @ input2 
-    print("Check upper bounds 2: ", torch.all(result <= TOL + TOL2 ))
-    if not torch.all(result <= TOL + TOL2):
-        print("upper bounds 2 failed")
-    assert torch.all(result <= TOL + TOL2)
+        #   wrong_indexes = torch.logical_not(result <= TOL + TOL2)
+        #   print(wrong_indexes.sum())
     
-    wrong_indexes = torch.logical_not(result <= TOL + TOL2)
-    print(wrong_indexes.sum())
-    
-    print(result[wrong_indexes])
+        #   print(result[wrong_indexes])
 
     
     
@@ -85,16 +85,25 @@ def main(start, end, bits, outputdir):
         maximas = []
         label = labels[0].item()
 
+        
         if i < start or i >= end:
             continue
+
+        inputs = inputs.cuda().double()
+
+        outputs = net(inputs)
+        _, preds = outputs.max(1)
+
+        if preds[0].item() != label:
+            print("wrong prediction, skipping")
+            continue
+
 
         for other in range(10): # todo FIX number 10 to number classes
             if other == label:
                 continue
             print(f"other {other}", flush=True)
             
-            inputs = inputs.cuda().double()
-
             """check ... works
             out1 = net(inputs)
             out2 = net2(inputs)
@@ -138,6 +147,9 @@ def main(start, end, bits, outputdir):
             # A_ub @ x <= b_ub
             A_ub, b_ub = create_upper_bounds(compnet, inputs)
 
+            print("First check")
+            check_upper_bounds(A_ub, b_ub, inputs, None)
+            
             # add conditions on net(label) > net(others)
             for other_output in range(10):
                 if other_output == label:
@@ -147,6 +159,10 @@ def main(start, end, bits, outputdir):
 
                 A_ub = torch.cat([A_ub, c_cf])
                 b_ub = torch.cat([b_ub, torch.tensor([-TOL], dtype=torch.float64)])
+
+            print("Check net(label) > net(others)")
+            check_upper_bounds(A_ub, b_ub, inputs, None)
+
                 
             # add condition net2(label) < net2(other)
             cf = create_comparing_network_classifier(compnet, label, other, in_orig=False)
@@ -154,9 +170,7 @@ def main(start, end, bits, outputdir):
 
             A_ub = torch.cat([A_ub, c_cf])
             b_ub = torch.cat([b_ub, torch.tensor([-TOL], dtype=torch.float64)])
-
-            print(A_ub.shape)
-            print(b_ub.shape)
+            
             
             # A_eq @ x == b_eq
             A_eq = torch.zeros((1, N+1)).double()
@@ -182,7 +196,7 @@ def main(start, end, bits, outputdir):
                 err_by_sol = (c @ torch.tensor(x, dtype=torch.float64).cuda()).item()
                 
                 try: 
-                    check_upper_bounds(A_ub, b_ub, inputs, x[1:])
+                    check_upper_bounds(A_ub, b_ub, None, x[1:])
                     check_saturations(net, inputs, x[1:])
 
                     if not np.isclose(-err, err_by_net):
@@ -196,7 +210,6 @@ def main(start, end, bits, outputdir):
                 except AssertionError:
                     print(" *** Optimisation FAILED. *** ")
                     maximas.append(None)
-                    input("press any key")
                     continue
                 maximas.append(-err )
 
@@ -213,8 +226,6 @@ def main(start, end, bits, outputdir):
             else:
                 max_value = "NaN"
             print(f"{i},{max_value},{maximas}", file=f)
-            #np.save(f"{RESULT_PATH}/{i}.npy", np.array(x[1:], dtype=np.float64))
-            #np.save(f"{RESULT_PATH}/{i}_orig.npy", inputs.cpu().numpy())
         
 if __name__ == "__main__":
 
