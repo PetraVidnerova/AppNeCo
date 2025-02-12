@@ -4,6 +4,8 @@ import torch.nn as nn
 
 from quant_utils import lower_precision
 
+NUMCLASSES = 10 # fix this
+
 def eval_one_sample(net, sample):
     """evaluates one sample and returns boolean vector 
     of relu's saturations"""
@@ -187,7 +189,7 @@ def magic_layer(layer1, layer2):
     
     
     
-def create_comparing_network(net, net2, bits=16):
+def create_comparing_network(net, net2, bits=16, skip_magic=False):
     """Takes two networks and creates a super network, the two original networks are side by side and
     on the top they are connected to compute the sum of differences between their outputs. The
     second network is rounded for the given number of bits.
@@ -226,21 +228,21 @@ def create_comparing_network(net, net2, bits=16):
     assert isinstance(sequence2[-1], nn.Linear)
     assert isinstance(layer_list[-1], nn.Linear)
 
-    layer_list = layer_list[:-1]
+    if not skip_magic:
+        layer_list = layer_list[:-1]
 
-    layer_list.append(magic_layer(sequence1[-1], sequence2[-1]))
+        layer_list.append(magic_layer(sequence1[-1], sequence2[-1]))
     
         
-    layer_list.append(nn.ReLU())
+        layer_list.append(nn.ReLU())
     
-    output_layer = nn.Linear(20, 1).double() # TODO fix  the number
-    output_layer.weight.data = torch.ones(1, 20).double()
-    output_layer.bias.data = torch.zeros(1).double()
-
-    layer_list.append(output_layer)
+        output_layer = nn.Linear(20, 1).double() # TODO fix  the number
+        output_layer.weight.data = torch.ones(1, 20).double()
+        output_layer.bias.data = torch.zeros(1).double()
+  
+        layer_list.append(output_layer)
     
     return nn.Sequential(*layer_list).cuda()
-
 
 def get_subnetwork(net, i):
     """ Returns network up to i-th linear layer includisively."""
@@ -255,5 +257,25 @@ def get_subnetwork(net, i):
     return nn.Sequential(*layers)
     
 
+def create_comparing_network_classifier(net, label, other, in_orig=False):
+
+    out = net[-1].out_features
+    assert out == 2 * NUMCLASSES 
+
+    if not in_orig:
+        n = out // 2
+    else:
+        n = 0 
+    
+    output_layer = nn.Linear(out, 1).double() # TODO fix  the number
+    output_layer.weight.data = torch.zeros(1, out).double()
+    output_layer.bias.data = torch.zeros(1).double()
+    output_layer.weight.data[0, n + label] = -1.0
+    output_layer.weight.data[0, n + other] = 1.0
+
+    old_layers = [layer for layer in net]
+    old_layers.append(output_layer)
+
+    return nn.Sequential(*old_layers).cuda()
 
 

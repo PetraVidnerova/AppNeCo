@@ -75,7 +75,5 @@ def optimize(c, A_ub, b_ub, A_eq, b_eq, l, u):
 
     res = linprog(c, A_ub, b_ub, A_eq, b_eq, bounds=(l, u))
     print(res)
-
-    assert res.success
     
-    return res.fun, res.x
+    return res
