@@ -111,3 +111,10 @@ class SimpleNet(nn.Module):
     def forward(self, xb):
         return self.network(xb)
 
+def load_network(network_class, network_path):
+    net = network_class()
+    net.load_state_dict(torch.load(network_path))
+    net.eval()
+    net.cuda()
+    net.double()
+    return  net
