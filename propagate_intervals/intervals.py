@@ -206,9 +206,6 @@ def calculate_output_intervals(class_):
         print(alpha)
         print(beta)
         print("ok")
-
-
-
     
     
     
@@ -217,7 +214,7 @@ if __name__ == "__main__":
 
     CLASS=0 
     BATCH_SIZE=1
-    
+
     NETWORK="mnist_dense_net.pt"
     MODEL = SmallDenseNet 
     LAYERS = 3 
@@ -226,7 +223,12 @@ if __name__ == "__main__":
 
     calculate_output_intervals(CLASS) 
 
+    """
     NETWORK="mnist_conv_net.pt"
     MODEL = SmallConvNet
     LAYERS = 5
+    INPUT_SIZE = (1, 28, 28) 
+    N = 1 * 28 * 28 
+
     calculate_output_intervals(CLASS) 
+    """
